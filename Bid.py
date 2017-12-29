@@ -68,14 +68,17 @@ class Bid:
                 self.lastName  = splitOnSpaces[1].strip()
                 self.pos       = splitOnCommas[1].strip().upper()
                 self.mlbTeam   = splitOnCommas[2].strip().upper()
-            elif len(splitOnCommas) == 2: # first last, pos team
+            elif len(splitOnCommas) == 2: # first last, pos team OR first last pos, team
                 splitOnSpaces  = splitOnCommas[0].split(" ")
                 self.firstName = splitOnSpaces[0]
                 self.lastName  = splitOnSpaces[1]
-
-                splitOnSpaces  = splitOnCommas[1].strip().split(" ")
-                self.pos       = splitOnSpaces[0]
-                self.mlbTeam   = splitOnSpaces[1]
+                if len(splitOnSpaces) > 2:
+                    self.pos = splitOnSpaces[2]
+                    self.mlbTeam = splitOnCommas[1].strip()
+                else:
+                    splitOnSpaces  = splitOnCommas[1].strip().split(" ")
+                    self.pos       = splitOnSpaces[0]
+                    self.mlbTeam   = splitOnSpaces[1]
         else:
             splitOnSpaces = tag.split(" ")
 
@@ -88,11 +91,10 @@ class Bid:
         #--------------------------------------------------
         # Get the string containing the value from the post
         #--------------------------------------------------
-
         if len(timeLines) > 0:
             timeString = timeLines[-1]
         else:
-            print self.tag
+            print "No time lines in bid.findBidTime for %s" % self.tag
             timeString = ""
 
         #------------------------------
@@ -100,11 +102,12 @@ class Bid:
         #------------------------------
         if timeString != "":
             timeStamp = timeString.split(">")[-2].strip().split("<")[0]
-
+        
         #-----------------------------------------------
         # Get the struct_time object from the time stamp
         #-----------------------------------------------
-        self.time = time.strptime(timeStamp, "%b %d %Y, %I:%M %p")
+        #self.time = time.strptime(timeStamp, "%b %d %Y, %I:%M %p")
+        self.time = time.strptime(timeStamp, "%Y-%m-%dT%H:%M")
 
         #--------------------------------------------
         # Convert the bid time to the datetime object
@@ -192,11 +195,9 @@ class Bid:
         # Does it have a $ sign?
         #-----------------------
         if self.value < 0:
-            if self.lastName == "Mujica": print splitValueString
             for token in splitValueString.split(" "):
-                if self.lastName == "Mujica": print token
-                if token.count("&#036;") > 0:
-                    newSplit = token.split("&#036;")
+                if token.count("&amp;#036;") > 0:
+                    newSplit = token.split("&amp;#036;")
                     for t in newSplit:
                         if len(t) > 0:
                             #------------------------------------
@@ -208,6 +209,24 @@ class Bid:
                             if self.__isNumber(t):
                                 self.value = int(t)
 
+        #------------------------------------------
+        # See if there is an actual $ sign in there
+        #------------------------------------------
+        if self.value < 0:
+            for token in splitValueString.split(" "):
+                if token.count("$") > 0:
+                    newSplit = token.split("$")
+                    for t in newSplit:
+                        if len(t) > 0:
+                            #------------------------------------
+                            # Check for any lingering punctuation
+                            #------------------------------------
+                            if t.count(".") > 0:
+                                t = t.split(".")[0]
+
+                            if self.__isNumber(t):
+                                self.value = int(t)
+        
         #----------------------------
         # If it doesn't have a $ sign
         #----------------------------
@@ -284,14 +303,14 @@ class Bid:
                     if self.__isNumber(subtoken):
                         self.value = int(subtoken)
 
-
+        #------------------------------------------
         # See if the string had a ` character in it
         #------------------------------------------
         if self.value < 0:
             splitValueString = valueString.split("`")
             if len(splitValueString) >= 2: 
                 tmp = splitValueString[1]
-                self.value = int(splitValueString[1].split(" ")[0])
+                self.value = int(splitValueString[1].split(" ")[0].split("<")[0])
 
     def printBid(self):
         print "First:  "  + str(self.firstName)

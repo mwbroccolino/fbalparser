@@ -10,6 +10,8 @@ import smtplib
 import time
 import datetime
 import sys 
+import os 
+import subprocess
 
 #from matplotlib import pyplot
 
@@ -407,13 +409,21 @@ def parseBoard(rootUrl, year):
 
     return bidList
 
+def urlOpen(url):
+    command = "curl %s >& tmp.txt" % url
+    subprocess.call(command, shell=True)
+    url_data = open("tmp.txt", "r").readlines()
+    subprocess.call("rm tmp.txt", shell=True)
+    return url_data
+ 
 def parseBoard2(rootUrl):
     #-------------------------------------------------------------------
     # Loop over the main pages filling up the Bid structs where possible
     #-------------------------------------------------------------------
     done    = False
-    inc     = 0
-    bidList = []
+    inc      = 0
+    bidList  = []
+    tag_list = []
 
     print "+--------+"
     print "| Status |"
@@ -422,16 +432,17 @@ def parseBoard2(rootUrl):
         #----------------------
         # Assemble the next URL
         #----------------------
-#         nextUrl = rootUrl + str(inc)
-        nextUrl = rootUrl
+        nextUrl = rootUrl + "/index-s%d.html" % inc
+        inc += 255
 
-#         print "Parsing Bids: %3d to %3d" % (inc, (inc + 15)-1)
+        #nextUrl = rootUrl
+        #print "Parsing Bids: %3d to %3d" % (inc, (inc + 255)-1)
 
         #----------------------
         # Retrieve the next URL
         #----------------------
         try:
-            nextUrlData = urllib2.urlopen(nextUrl).readlines()
+            nextUrlData = urlOpen(nextUrl)
         except urllib2.URLError:
             print "Error: No Internet Connection. Skipping bid parsing."
             return []
@@ -450,44 +461,47 @@ def parseBoard2(rootUrl):
             #-------------------------
             # See if the line is a bid
             #-------------------------
-            if line.count("This topic was started:") > 0 and line.count("Pinned") == 0:
+            if line.count("headline") > 0 and not line.count("Auction Rules") and not line.count("How To"):
                 #----------------------------------------
                 # Pull out what you can from the bid line
                 #----------------------------------------
                 splitLine = line.split("\"")
-                url       = splitLine[1].split("?")[0] + "?" + splitLine[1].split(";")[-1]
-                #timeStamp = splitLine[3].split(":")[1].strip() + ":" + splitLine[3].split(":")[-1]
-                tag       = (splitLine[-1])[1:-7]
+                url       = splitLine[3]
+                tag       = splitLine[-1].split(">")[1].split("<")[0]
+                
+                if tag not in tag_list:
+                    tag_list.append(tag)
+                else:
+                    done = True
+                    break
 
+                #timeStamp = splitLine[3].split(":")[1].strip() + ":" + splitLine[3].split(":")[-1]
+                
                 #------------------
                 # Get the team name
                 #------------------
-                jjj = iii + 5
+                jjj = iii + 13
 
                 if jjj < len(nextUrlData):
                     #-----------------------
                     # Get the team name line
                     #-----------------------
                     teamNameLine = nextUrlData[jjj]
-
-                    #------------------
-                    # Get the team name
-                    #------------------
-                    splitTeamNameLine = teamNameLine.split(">")
-                    team              = splitTeamNameLine[-5][:-3]
+                    team = teamNameLine.split(">")[1].split("<")[0]
                 else:
                     print "Warning: No team name line for %s" % (tag)
-
+                
                 #------------------------
                 # Create a new Bid object
                 #------------------------
                 bid = Bid.Bid(team)
-
+                
                 #---------------------------------------------------------------------------
                 # Make some manual adjustments to the tags to make sure they parse correctly
                 # if tag.count("") > 0: tag = ""
                 #---------------------------------------------------------------------------
                 if tag.count("Duda") > 0: tag = "Lucas Duda 1B NYM" 
+                if tag.count("Senzatela") > 0: tag = "Antonio Senzatela SP COL" 
                 if tag.count("Blackmon") > 0: tag = "Charlie Blackmon OF COL"
                 if tag.count("Familia") > 0: tag = "Jeurys Familia RP NYM" 
                 if tag.count("Scherzer") > 0: tag = "Max Scherzer SP WSH"
@@ -506,6 +520,12 @@ def parseBoard2(rootUrl):
                 if tag.count("LeMahieu") > 0: tag = "DJ LeMahieu 2B COL"
                 if tag.count("Schoop") > 0: tag = "Jonathan Schoop 2B BAL"
                 if tag.count("Joe Kelly") > 0: tag = "Joe Kelly SP BOS"
+                if tag.count("Wily Peralta") > 0: tag = "Wily Peralta SP MIL"
+                if tag.count("K. Gibson") > 0: tag = "Kyle Gibson SP MIN"
+                if tag.count("Jon Gray") > 0: tag = "Jonathan Gray SP COL"
+                if tag.count("Colome") > 0: tag = "Alexander Colome RP TB"
+                if tag.count("Jed Lowrie") > 0: tag = "Jed Lowrie 2B OAK"
+                if tag.count("Colby") > 0: tag = "Colby Rasmus OF TB"
 
                 #-----------------------------------------
                 # Parse the tag for name/pos info
@@ -518,7 +538,7 @@ def parseBoard2(rootUrl):
                 #-----------------
                 # Get the bid data
                 #-----------------
-                data = urllib2.urlopen(url).readlines()
+                data = urlOpen(url)
 
                 #------------------
                 # Find the bid time
@@ -526,25 +546,25 @@ def parseBoard2(rootUrl):
                 timeLines = []
 
                 for dataLine in data:
-                    if dataLine.count("Posted:") > 0:
+                    if dataLine.count("datePublished") > 0 or dataLine.count("commentTime"):
                         timeLines.append(dataLine)
 
                 bid.findBidTime(timeLines)
-
+                
                 #-------------------------
                 # Get the value of the bid
                 #-------------------------
                 bidLines = []
 
                 for dataLine in data:
-                    if dataLine.count("<div class='postcolor'>") > 0:
+                    if dataLine.count("articleBody") > 0 or dataLine.count("commentText"):
                         bidLines.append(dataLine)
 
                 bid.getValue(bidLines)
 
                 if bid.value < 0:
                     print "Value Error: %s" % bid.tag
-
+                
                 #-------------------------
                 # See if the bid is active
                 #-------------------------
@@ -554,27 +574,7 @@ def parseBoard2(rootUrl):
                 # Add the bid to the list
                 #------------------------
                 bidList.append(bid)
-
-                #--------------------------
-                # Increment the bid counter
-                #--------------------------
-                numBids += 1
-
-        #-------------------
-        # See if we are done
-        #-------------------
-        if numBids == 0:
-            done = True
-        else:
-            inc += 15
-
-        """
-        start debug
-        """
-        done = True
-        """
-        end debug
-        """
+    
     #------
     # Debug
     #------
@@ -1402,7 +1402,7 @@ if __name__ == "__main__":
     hitterFile       = "/Users/michaelbroccolino/Desktop/hitters_test_new.csv"
     pitcherFile      = "/Users/michaelbroccolino/Desktop/pitchers_test_new.csv"
     keeperFile       = "/Users/michaelbroccolino/Desktop/baseball/" + year+ "/keepers.txt"
-    auctionBoardRoot = "http://z15.invisionfree.com/FB_Auction_Board/index.php?showforum=3"
+    auctionBoardRoot = "https://www.tapatalk.com/groups/fbauctionboard/2017-auction-f3"
     outputFile       = "/Users/michaelbroccolino/Desktop/auction_report.csv"
 
     ########################
@@ -1434,8 +1434,7 @@ if __name__ == "__main__":
     # Parse the auction board
     #------------------------
     bidList = parseBoard2(auctionBoardRoot)
-    #bidList = []
-
+    
     #------------------------------------------
     # Consolidate the info into the player list
     #------------------------------------------
@@ -1455,7 +1454,7 @@ if __name__ == "__main__":
     # Print the report
     #-----------------
     if len(sys.argv) > 1:
-    	printAuctionReport(outputFile, hitterList + pitcherList, inflationRate, hoursTilCheck=int(sys.argv[1]))
+     	printAuctionReport(outputFile, hitterList + pitcherList, inflationRate, hoursTilCheck=int(sys.argv[1]))
     else:
     	printAuctionReport(outputFile, hitterList + pitcherList, inflationRate)
 	

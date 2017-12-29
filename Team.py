@@ -184,7 +184,10 @@ class Team:
         # sort the players into their positional lists
         posList = {}
 
-        for player in playerList: 
+        for player in playerList:
+            if player.lastName == "Gattis":
+                player.bestPos = "C"
+
             if player.pos[0].strip() not in self.starters.keys(): continue
             
             if player.bestPos in posList.keys(): 
